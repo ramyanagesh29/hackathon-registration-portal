@@ -311,7 +311,67 @@ const getMyRegistration = async (req, res) => {
   }
 }
 
+
+const updateRegistrationLinks = async (req, res) => {
+  try {
+    const { pptLink, prototypeLink } = req.body
+
+    const isValidUrl = (value) => {
+      try {
+        const parsed = new URL(value)
+        return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+      } catch {
+        return false
+      }
+    }
+
+    if (!pptLink || !prototypeLink) {
+      return res.status(400).json({
+        success: false,
+        message: 'Both PPT and prototype links are required.',
+      })
+    }
+
+    if (!isValidUrl(pptLink) || !isValidUrl(prototypeLink)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide valid HTTP or HTTPS links.',
+      })
+    }
+
+    const registration = await HackathonRegistration.findOne({
+      user: req.user._id,
+    })
+
+    if (!registration) {
+      return res.status(404).json({
+        success: false,
+        message: 'Registration not found.',
+      })
+    }
+
+    registration.pptLink = pptLink.trim()
+    registration.prototypeLink = prototypeLink.trim()
+
+    await registration.save()
+
+    return res.status(200).json({
+      success: true,
+      message: 'Registration links updated successfully.',
+      registration,
+    })
+  } catch (error) {
+    console.error('Update registration links error:', error)
+
+    return res.status(500).json({
+      success: false,
+      message: 'Unable to update registration links.',
+    })
+  }
+}
+
 module.exports = {
   registerHackathon,
   getMyRegistration,
+  updateRegistrationLinks,
 }

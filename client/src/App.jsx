@@ -8,6 +8,7 @@ import VerifyOTP from './pages/VerifyOTP'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import HackathonRegistration from './pages/HackathonRegistration'
+import EditRegistrationLinks from './pages/EditRegistrationLinks'
 
 import ProtectedRoute from './components/ProtectedRoute'
 
@@ -54,6 +55,14 @@ function App() {
       </ProtectedRoute>
     }
   />
+  <Route
+  path="/edit-registration-links"
+  element={
+    <ProtectedRoute>
+      <EditRegistrationLinks />
+    </ProtectedRoute>
+  }
+/>
 
         <Route path="*" element={<NotFound />} />
       </Routes>

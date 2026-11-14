@@ -140,11 +140,17 @@ function Dashboard() {
           <Link to="/" className="text-xl font-bold">
             <span className="text-purple-400">Code</span>-a-Nova
           </Link>
+          <Link
+            to="/edit-registration-links"
+            className="mt-5 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-3 font-semibold text-white transition hover:bg-blue-500"
+          >
+            Edit Registration Links
+          </Link>
 
           <button
             onClick={handleLogout}
             disabled={loggingOut}
-            className="flex items-center gap-2 rounded-xl border border-white/10 px-4 py-2 text-sm text-gray-300 hover:border-red-400 hover:text-red-400 disabled:opacity-50"
+            className="flex items-center gap-2 rounded-xl border b order-white/10 px-4 py-2 text-sm text-gray-300 hover:border-red-400 hover:text-red-400 disabled:opacity-50"
           >
             <LogOut size={17} />
             {loggingOut ? 'Logging out...' : 'Logout'}
