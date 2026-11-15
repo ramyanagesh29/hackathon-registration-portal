@@ -37,6 +37,24 @@ const userSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+
+    // Number of incorrect OTP attempts
+    otpAttempts: {
+      type: Number,
+      default: 0,
+    },
+
+    // Temporary OTP verification block
+    otpBlockedUntil: {
+      type: Date,
+      default: null,
+    },
+
+    // Last time an OTP was sent
+    otpLastSentAt: {
+      type: Date,
+      default: null,
+    },
   },
   {
     timestamps: true,

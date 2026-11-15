@@ -23,31 +23,35 @@ const transporter = nodemailer.createTransport({
 })
 
 const sendRegistrationEmail = async (registration) => {
-  const memberRows = registration.teamMembers.length
-  ? registration.teamMembers
-      .map(
-        (member, index) => `
-          <tr>
-            <td style="padding:10px;border:1px solid #ddd;">
-              ${index + 1}
-            </td>
-            <td style="padding:10px;border:1px solid #ddd;">
-              ${escapeHtml(member.name)}
-            </td>
-            <td style="padding:10px;border:1px solid #ddd;">
-              ${escapeHtml(member.email)}
-            </td>
-          </tr>
-        `
-      )
-      .join('')
-  : `
-    <tr>
-      <td colspan="3" style="padding:10px;border:1px solid #ddd;">
-        Solo participation
-      </td>
-    </tr>
-  `
+  const teamMembers = Array.isArray(registration.teamMembers)
+    ? registration.teamMembers
+    : []
+
+  const memberRows = teamMembers.length
+    ? teamMembers
+        .map(
+          (member, index) => `
+            <tr>
+              <td style="padding:10px;border:1px solid #ddd;">
+                ${index + 1}
+              </td>
+              <td style="padding:10px;border:1px solid #ddd;">
+                ${escapeHtml(member.name)}
+              </td>
+              <td style="padding:10px;border:1px solid #ddd;">
+                ${escapeHtml(member.email)}
+              </td>
+            </tr>
+          `
+        )
+        .join('')
+    : `
+      <tr>
+        <td colspan="3" style="padding:10px;border:1px solid #ddd;">
+          Solo participation
+        </td>
+      </tr>
+    `
 
   const mailOptions = {
     from: {
@@ -67,7 +71,7 @@ const sendRegistrationEmail = async (registration) => {
           <p>Hackathon Registration Confirmation</p>
         </div>
 
-        <h2>Hello ${registration.fullName},</h2>
+        <h2>Hello ${escapeHtml(registration.fullName)},</h2>
 
         <p>
           Your hackathon registration has been successfully submitted.
@@ -76,19 +80,19 @@ const sendRegistrationEmail = async (registration) => {
 
         <h3>Participant Details</h3>
 
-        <p><strong>Name:</strong> ${registration.fullName}</p>
-        <p><strong>Email:</strong> ${registration.email}</p>
-        <p><strong>Mobile:</strong> ${registration.mobile}</p>
-        <p><strong>College:</strong> ${registration.college}</p>
+        <p><strong>Name:</strong> ${escapeHtml(registration.fullName)}</p>
+        <p><strong>Email:</strong> ${escapeHtml(registration.email)}</p>
+        <p><strong>Mobile:</strong> ${escapeHtml(registration.mobile)}</p>
+        <p><strong>College:</strong> ${escapeHtml(registration.college)}</p>
 
         <h3>Project Details</h3>
 
-        <p><strong>Project:</strong> ${registration.projectName}</p>
-        <p><strong>Domain:</strong> ${registration.domain}</p>
-        <p><strong>Course:</strong> ${registration.course}</p>
-        <p><strong>Branch:</strong> ${registration.branch}</p>
-        <p><strong>Year:</strong> ${registration.year}</p>
-        <p><strong>Team Size:</strong> ${registration.teamSize}</p>
+        <p><strong>Project:</strong> ${escapeHtml(registration.projectName)}</p>
+        <p><strong>Domain:</strong> ${escapeHtml(registration.domain)}</p>
+        <p><strong>Course:</strong> ${escapeHtml(registration.course)}</p>
+        <p><strong>Branch:</strong> ${escapeHtml(registration.branch)}</p>
+        <p><strong>Year:</strong> ${escapeHtml(registration.year)}</p>
+        <p><strong>Team Size:</strong> ${escapeHtml(registration.teamSize)}</p>
 
         <h3>Team Members</h3>
 
@@ -120,11 +124,13 @@ const sendRegistrationEmail = async (registration) => {
     `,
   }
 
-  await transporter.sendMail(mailOptions)
+  const info = await transporter.sendMail(mailOptions)
 
   console.log(
     `Registration confirmation email sent to ${registration.email}`
   )
+
+  return info
 }
 
 module.exports = sendRegistrationEmail

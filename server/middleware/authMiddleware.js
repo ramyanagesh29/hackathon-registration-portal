@@ -4,7 +4,6 @@ const User = require('../models/User')
 
 const protect = async (req, res, next) => {
   try {
-    // Read JWT from the HTTP-only cookie
     const token = req.cookies?.token
 
     if (!token) {
@@ -14,11 +13,30 @@ const protect = async (req, res, next) => {
       })
     }
 
-    // Verify the JWT signature and expiry
-    const decoded = jwt.verify(token, process.env.JWT_SECRET)
+    if (!process.env.JWT_SECRET) {
+      console.error('JWT_SECRET is not configured.')
 
-    // Find the user associated with this token
-    const user = await User.findById(decoded.userId).select('-password -otpHash')
+      return res.status(500).json({
+        success: false,
+        message: 'Authentication service is not configured.',
+      })
+    }
+
+    const decoded = jwt.verify(
+      token,
+      process.env.JWT_SECRET,
+      { algorithms: ['HS256'] }
+    )
+
+    if (!decoded.userId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid authentication token.',
+      })
+    }
+
+    const user = await User.findById(decoded.userId)
+      .select('-password -otpHash')
 
     if (!user) {
       return res.status(401).json({
@@ -34,14 +52,15 @@ const protect = async (req, res, next) => {
       })
     }
 
-    // Attach user information to the request
     req.user = user
 
     next()
+
   } catch (error) {
     if (
       error.name === 'JsonWebTokenError' ||
-      error.name === 'TokenExpiredError'
+      error.name === 'TokenExpiredError' ||
+      error.name === 'NotBeforeError'
     ) {
       return res.status(401).json({
         success: false,

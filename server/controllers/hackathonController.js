@@ -312,27 +312,30 @@ const getMyRegistration = async (req, res) => {
 }
 
 
+
 const updateRegistrationLinks = async (req, res) => {
   try {
     const { pptLink, prototypeLink } = req.body
 
-    const isValidUrl = (value) => {
-      try {
-        const parsed = new URL(value)
-        return parsed.protocol === 'http:' || parsed.protocol === 'https:'
-      } catch {
-        return false
-      }
-    }
-
-    if (!pptLink || !prototypeLink) {
+    if (
+      typeof pptLink !== 'string' ||
+      typeof prototypeLink !== 'string' ||
+      !pptLink.trim() ||
+      !prototypeLink.trim()
+    ) {
       return res.status(400).json({
         success: false,
         message: 'Both PPT and prototype links are required.',
       })
     }
 
-    if (!isValidUrl(pptLink) || !isValidUrl(prototypeLink)) {
+    const cleanPptLink = pptLink.trim()
+    const cleanPrototypeLink = prototypeLink.trim()
+
+    if (
+      !isValidUrl(cleanPptLink) ||
+      !isValidUrl(cleanPrototypeLink)
+    ) {
       return res.status(400).json({
         success: false,
         message: 'Please provide valid HTTP or HTTPS links.',
@@ -350,8 +353,8 @@ const updateRegistrationLinks = async (req, res) => {
       })
     }
 
-    registration.pptLink = pptLink.trim()
-    registration.prototypeLink = prototypeLink.trim()
+    registration.pptLink = cleanPptLink
+    registration.prototypeLink = cleanPrototypeLink
 
     await registration.save()
 
@@ -360,8 +363,9 @@ const updateRegistrationLinks = async (req, res) => {
       message: 'Registration links updated successfully.',
       registration,
     })
+
   } catch (error) {
-    console.error('Update registration links error:', error)
+    console.error('Update registration links error:', error.message)
 
     return res.status(500).json({
       success: false,
@@ -369,6 +373,7 @@ const updateRegistrationLinks = async (req, res) => {
     })
   }
 }
+
 
 module.exports = {
   registerHackathon,

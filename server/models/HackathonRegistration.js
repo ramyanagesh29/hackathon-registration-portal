@@ -7,12 +7,14 @@ const teamMemberSchema = new mongoose.Schema(
       type: String,
       required: true,
       trim: true,
+      minlength: 3,
     },
     email: {
       type: String,
       required: true,
       lowercase: true,
       trim: true,
+      match: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
     },
   },
   { _id: false }
@@ -39,11 +41,13 @@ const hackathonRegistrationSchema = new mongoose.Schema(
       required: true,
       lowercase: true,
       trim: true,
+      match: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
     },
 
     mobile: {
       type: String,
       required: true,
+      match: /^[6-9]\d{9}$/,
     },
 
     college: {
@@ -104,6 +108,13 @@ const hackathonRegistrationSchema = new mongoose.Schema(
     teamMembers: {
       type: [teamMemberSchema],
       default: [],
+      validate: {
+        validator: function (members) {
+          const expected = this.teamSize === 1 ? 0 : this.teamSize
+          return members.length === expected
+        },
+        message: 'Team member count does not match team size.',
+      },
     },
 
     registrationStatus: {

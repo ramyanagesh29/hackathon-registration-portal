@@ -1,9 +1,15 @@
 
 const crypto = require('crypto')
 const bcrypt = require('bcryptjs')
-const User = require('../models/User')
 const jwt = require('jsonwebtoken')
+const User = require('../models/User')
 const sendOTPEmail = require('../utils/sendEmail')
+
+// OTP security settings
+const OTP_EXPIRY_MINUTES = 10
+const MAX_OTP_ATTEMPTS = 5
+const OTP_BLOCK_MINUTES = 15
+const OTP_RESEND_SECONDS = 60
 
 // Generate a secure six-digit OTP
 const generateOTP = () => {
@@ -15,12 +21,32 @@ const hashOTP = (otp) => {
   return crypto.createHash('sha256').update(otp).digest('hex')
 }
 
+// Normalize email
+const normalizeEmail = (email) => {
+  return typeof email === 'string' ? email.trim().toLowerCase() : ''
+}
+
+// Reset OTP security fields
+const resetOTPAttempts = (user) => {
+  user.otpAttempts = 0
+  user.otpBlockedUntil = null
+}
+
 // POST /api/auth/signup
 const signup = async (req, res) => {
   try {
     const { name, email, password, confirmPassword } = req.body
 
-    if (!name || !email || !password || !confirmPassword) {
+    if (
+      typeof name !== 'string' ||
+      typeof email !== 'string' ||
+      typeof password !== 'string' ||
+      typeof confirmPassword !== 'string' ||
+      !name.trim() ||
+      !email.trim() ||
+      !password ||
+      !confirmPassword
+    ) {
       return res.status(400).json({
         success: false,
         message: 'Please fill in all fields.',
@@ -28,7 +54,7 @@ const signup = async (req, res) => {
     }
 
     const cleanName = name.trim()
-    const cleanEmail = email.trim().toLowerCase()
+    const cleanEmail = normalizeEmail(email)
 
     if (cleanName.length < 3) {
       return res.status(400).json({
@@ -44,10 +70,12 @@ const signup = async (req, res) => {
       })
     }
 
-    if (password.length < 8 ||
-        !/[A-Z]/.test(password) ||
-        !/[a-z]/.test(password) ||
-        !/[0-9]/.test(password)) {
+    if (
+      password.length < 8 ||
+      !/[A-Z]/.test(password) ||
+      !/[a-z]/.test(password) ||
+      !/[0-9]/.test(password)
+    ) {
       return res.status(400).json({
         success: false,
         message: 'Password must contain at least 8 characters, uppercase, lowercase and a number.',
@@ -87,17 +115,26 @@ const signup = async (req, res) => {
     }
 
     user.otpHash = hashOTP(otp)
-    user.otpExpires = new Date(Date.now() + 10 * 60 * 1000)
+    user.otpExpires = new Date(
+      Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000
+    )
+    user.otpLastSentAt = new Date()
+
+    resetOTPAttempts(user)
 
     await user.save()
 
     try {
       await sendOTPEmail(cleanEmail, otp)
     } catch (emailError) {
-      // Remove a newly created account if the OTP email fails.
-    if (isNewUser) {
-       await User.deleteOne({ _id: user._id })
-    }
+      if (isNewUser) {
+        await User.deleteOne({ _id: user._id })
+      } else {
+        user.otpHash = null
+        user.otpExpires = null
+        user.otpLastSentAt = null
+        await user.save()
+      }
 
       console.error('OTP email delivery failed:', emailError.message)
 
@@ -115,6 +152,13 @@ const signup = async (req, res) => {
   } catch (error) {
     console.error('Signup error:', error.message)
 
+    if (error.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        message: 'This email is already registered.',
+      })
+    }
+
     return res.status(500).json({
       success: false,
       message: 'Server error during signup.',
@@ -126,24 +170,23 @@ const signup = async (req, res) => {
 const verifyOTP = async (req, res) => {
   try {
     const { email, otp } = req.body
+    const cleanEmail = normalizeEmail(email)
 
-    if (!email || !otp) {
+    if (!cleanEmail || !otp) {
       return res.status(400).json({
         success: false,
         message: 'Email and OTP are required.',
       })
     }
 
-    if (!/^\d{6}$/.test(otp)) {
+    if (typeof otp !== 'string' || !/^\d{6}$/.test(otp)) {
       return res.status(400).json({
         success: false,
         message: 'Enter a valid six-digit OTP.',
       })
     }
 
-    const user = await User.findOne({
-      email: email.trim().toLowerCase(),
-    })
+    const user = await User.findOne({ email: cleanEmail })
 
     if (!user) {
       return res.status(404).json({
@@ -159,31 +202,73 @@ const verifyOTP = async (req, res) => {
       })
     }
 
-    if (!user.otpHash || !user.otpExpires ||
-        user.otpExpires.getTime() < Date.now()) {
+    // Check temporary verification block
+    if (
+      user.otpBlockedUntil &&
+      user.otpBlockedUntil.getTime() > Date.now()
+    ) {
+      return res.status(429).json({
+        success: false,
+        message: 'Too many incorrect attempts. Please request a new OTP after the cooldown.',
+      })
+    }
+
+    // Clear an expired block
+    if (user.otpBlockedUntil) {
+      user.otpBlockedUntil = null
+      user.otpAttempts = 0
+      await user.save()
+    }
+
+    if (
+      !user.otpHash ||
+      !user.otpExpires ||
+      user.otpExpires.getTime() <= Date.now()
+    ) {
       return res.status(400).json({
         success: false,
         message: 'OTP has expired. Please request a new one.',
       })
     }
 
-    const submittedHash = hashOTP(otp)
+    const storedHash = Buffer.from(user.otpHash, 'hex')
+    const submittedHash = Buffer.from(hashOTP(otp), 'hex')
 
-    const otpMatches = crypto.timingSafeEqual(
-      Buffer.from(user.otpHash, 'hex'),
-      Buffer.from(submittedHash, 'hex')
-    )
+    if (
+      storedHash.length !== submittedHash.length ||
+      !crypto.timingSafeEqual(storedHash, submittedHash)
+    ) {
+      user.otpAttempts = (user.otpAttempts || 0) + 1
 
-    if (!otpMatches) {
+      if (user.otpAttempts >= MAX_OTP_ATTEMPTS) {
+        user.otpBlockedUntil = new Date(
+          Date.now() + OTP_BLOCK_MINUTES * 60 * 1000
+        )
+      }
+
+      await user.save()
+
+      const remaining = Math.max(
+        0,
+        MAX_OTP_ATTEMPTS - user.otpAttempts
+      )
+
       return res.status(400).json({
         success: false,
-        message: 'Incorrect OTP. Please try again.',
+        message:
+          remaining === 0
+            ? 'Too many incorrect attempts. Verification is blocked for 15 minutes.'
+            : `Incorrect OTP. ${remaining} attempts remaining.`,
       })
     }
 
+    // OTP verified successfully
     user.isVerified = true
     user.otpHash = null
     user.otpExpires = null
+    user.otpLastSentAt = null
+
+    resetOTPAttempts(user)
 
     await user.save()
 
@@ -200,20 +285,21 @@ const verifyOTP = async (req, res) => {
     })
   }
 }
+
+// POST /api/auth/resend-otp
 const resendOTP = async (req, res) => {
   try {
     const { email } = req.body
+    const cleanEmail = normalizeEmail(email)
 
-    if (!email) {
+    if (!cleanEmail) {
       return res.status(400).json({
         success: false,
         message: 'Email is required.',
       })
     }
 
-    const user = await User.findOne({
-      email: email.toLowerCase().trim(),
-    })
+    const user = await User.findOne({ email: cleanEmail })
 
     if (!user) {
       return res.status(404).json({
@@ -229,18 +315,37 @@ const resendOTP = async (req, res) => {
       })
     }
 
-    const otp = crypto.randomInt(100000, 1000000).toString()
+    // Enforce 60-second resend cooldown
+    if (user.otpLastSentAt) {
+      const elapsedSeconds =
+        (Date.now() - user.otpLastSentAt.getTime()) / 1000
 
-    user.otpHash = crypto
-      .createHash('sha256')
-      .update(otp)
-      .digest('hex')
+      if (elapsedSeconds < OTP_RESEND_SECONDS) {
+        const remaining = Math.ceil(
+          OTP_RESEND_SECONDS - elapsedSeconds
+        )
 
-    user.otpExpires = new Date(Date.now() + 10 * 60 * 1000)
+        return res.status(429).json({
+          success: false,
+          message: `Please wait ${remaining} seconds before requesting another OTP.`,
+        })
+      }
+    }
+
+    const otp = generateOTP()
+
+    // Send email before replacing the existing OTP
+    await sendOTPEmail(user.email, otp)
+
+    user.otpHash = hashOTP(otp)
+    user.otpExpires = new Date(
+      Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000
+    )
+    user.otpLastSentAt = new Date()
+
+    resetOTPAttempts(user)
 
     await user.save()
-
-    await sendOTPEmail(user.email, otp)
 
     return res.status(200).json({
       success: true,
@@ -256,22 +361,29 @@ const resendOTP = async (req, res) => {
   }
 }
 
-
+// POST /api/auth/login
 const login = async (req, res) => {
   try {
     const { email, password } = req.body
+    const cleanEmail = normalizeEmail(email)
 
-    if (!email || !password) {
+    if (!cleanEmail || typeof password !== 'string' || !password) {
       return res.status(400).json({
         success: false,
         message: 'Email and password are required.',
       })
     }
 
-    // Find the user by email
-    const user = await User.findOne({
-      email: email.toLowerCase().trim(),
-    })
+    if (!process.env.JWT_SECRET) {
+      console.error('JWT_SECRET is not configured.')
+
+      return res.status(500).json({
+        success: false,
+        message: 'Authentication service is not configured.',
+      })
+    }
+
+    const user = await User.findOne({ email: cleanEmail })
 
     if (!user) {
       return res.status(401).json({
@@ -280,7 +392,6 @@ const login = async (req, res) => {
       })
     }
 
-    // Only verified users can log in
     if (!user.isVerified) {
       return res.status(403).json({
         success: false,
@@ -288,7 +399,6 @@ const login = async (req, res) => {
       })
     }
 
-    // Compare entered password with hashed password
     const isPasswordCorrect = await bcrypt.compare(
       password,
       user.password
@@ -301,18 +411,21 @@ const login = async (req, res) => {
       })
     }
 
-    // Generate JWT
     const token = jwt.sign(
       { userId: user._id.toString() },
       process.env.JWT_SECRET,
-      { expiresIn: '1d' }
+      {
+        expiresIn: '1d',
+        algorithm: 'HS256',
+      }
     )
 
-    // Store JWT in an HTTP-only cookie
+    const isProduction = process.env.NODE_ENV === 'production'
+
     res.cookie('token', token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+      secure: isProduction,
+      sameSite: isProduction ? 'none' : 'lax',
       maxAge: 24 * 60 * 60 * 1000,
       path: '/',
     })
@@ -337,11 +450,14 @@ const login = async (req, res) => {
   }
 }
 
+// POST /api/auth/logout
 const logout = (req, res) => {
+  const isProduction = process.env.NODE_ENV === 'production'
+
   res.clearCookie('token', {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    secure: isProduction,
+    sameSite: isProduction ? 'none' : 'lax',
     path: '/',
   })
 
