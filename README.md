@@ -196,6 +196,23 @@ Open the local Vite URL shown in the terminal.
 - Improved email deliverability with an authenticated custom domain.
 - Additional registration analytics.
 
+## Application Screenshots
+
+### Home Page
+![Ramya Home](imgs/ramya-home.png)
+
+### Signup Page
+![Ramya Signup](imgs/ramya-signup.png)
+
+### Login Page
+![Ramya Login](imgs/ramya-login.png)
+
+### Dashboard
+![Ramya Dashboard](imgs/ramya-dashboard.png)
+
+### Hackathon Registration
+![Ramya Registration](imgs/ramya-registration.png)
+
 ## Author
 
 **Ramya N**
@@ -205,5 +222,6 @@ B.E. Computer Science and Engineering
 Vidya Vikas Institute of Engineering and Technology, Mysuru
 
 ---
+
 
 This project was developed as part of the Code-A-Nova Full Stack Development Internship.
