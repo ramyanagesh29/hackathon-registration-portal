@@ -1,21 +1,20 @@
 
-const nodemailer = require('nodemailer')
+const { Resend } = require('resend')
 
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-})
+if (!process.env.RESEND_API_KEY) {
+  console.warn('RESEND_API_KEY is not configured')
+}
+
+const resend = new Resend(process.env.RESEND_API_KEY)
 
 const sendOTPEmail = async (email, otp) => {
-  await transporter.sendMail({
-    from: {
-      name: 'Code-a-Nova',
-      address: process.env.EMAIL_USER,
-    },
-    to: email,
+  if (!process.env.RESEND_API_KEY) {
+    throw new Error('Resend API key is missing')
+  }
+
+  const { data, error } = await resend.emails.send({
+    from: 'Code-a-Nova <onboarding@resend.dev>',
+    to: [email],
     subject: 'Your Code-A-Nova Email Verification OTP',
     html: `
       <div style="font-family: Arial; max-width: 550px; margin: auto; padding: 25px; background: #f8f7ff; border-radius: 12px;">
@@ -31,7 +30,13 @@ const sendOTPEmail = async (email, otp) => {
     `,
   })
 
-  console.log('OTP email sent successfully')
+  if (error) {
+    console.error('Resend OTP email error:', error)
+    throw new Error(error.message || 'OTP email delivery failed')
+  }
+
+  console.log(`OTP email accepted by Resend for ${email}`)
+  return data
 }
 
 module.exports = sendOTPEmail

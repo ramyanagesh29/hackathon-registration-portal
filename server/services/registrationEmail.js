@@ -1,5 +1,7 @@
 
-const nodemailer = require('nodemailer')
+const { Resend } = require('resend')
+
+const resend = new Resend(process.env.RESEND_API_KEY)
 
 const escapeHtml = (value = '') =>
   String(value).replace(/[&<>"']/g, (character) => {
@@ -14,15 +16,11 @@ const escapeHtml = (value = '') =>
     return entities[character]
   })
 
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-})
-
 const sendRegistrationEmail = async (registration) => {
+  if (!process.env.RESEND_API_KEY) {
+    throw new Error('Resend API key is missing')
+  }
+
   const teamMembers = Array.isArray(registration.teamMembers)
     ? registration.teamMembers
     : []
@@ -53,14 +51,9 @@ const sendRegistrationEmail = async (registration) => {
       </tr>
     `
 
-  const mailOptions = {
-    from: {
-      name: 'Code-a-Nova',
-      address: process.env.EMAIL_USER,
-    },
-
-    to: registration.email,
-
+  const { data, error } = await resend.emails.send({
+    from: 'Code-a-Nova <onboarding@resend.dev>',
+    to: [registration.email],
     subject: 'Hackathon Registration Confirmation - Code-a-Nova',
 
     html: `
@@ -122,15 +115,18 @@ const sendRegistrationEmail = async (registration) => {
 
       </div>
     `,
+  })
+
+  if (error) {
+    console.error('Resend registration email error:', error)
+    throw new Error(error.message || 'Registration email delivery failed')
   }
 
-  const info = await transporter.sendMail(mailOptions)
-
   console.log(
-    `Registration confirmation email sent to ${registration.email}`
+    `Registration confirmation email accepted by Resend for ${registration.email}`
   )
 
-  return info
+  return data
 }
 
 module.exports = sendRegistrationEmail
