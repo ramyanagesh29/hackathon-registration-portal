@@ -88,7 +88,7 @@ hackathon-registration-portal/
 └── README.md
 ```
 
-*Note: Adjust the folder listing if your actual repository structure differs.*
+
 
 ## Installation and Setup
 
